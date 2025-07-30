@@ -1,7 +1,8 @@
-use std::{fs, path};
-
 use futures::future::join_all;
+use std::{fs, path};
 use thiserror::Error;
+
+use crate::terraform::Terraform;
 
 #[derive(Error, Debug)]
 pub enum ParseError {
@@ -16,24 +17,6 @@ pub enum ParseError {
 }
 
 type Result<T> = std::result::Result<T, ParseError>;
-
-#[derive(Debug, Default)]
-pub struct Terraform {
-    resources: Vec<String>,
-}
-
-impl Terraform {
-    pub fn merge(&self, other: &Self) -> Self {
-        Terraform {
-            resources: self
-                .resources
-                .iter()
-                .chain(other.resources.iter())
-                .cloned()
-                .collect(),
-        }
-    }
-}
 
 pub trait Parser {
     async fn parse<P: AsRef<path::Path>>(&self, path: P) -> Result<Terraform>;
@@ -56,17 +39,7 @@ impl Parser for FileParser {
 
         let contents = fs::read_to_string(path)?;
         let body: hcl::Body = hcl::from_str(contents.as_str())?;
-        let mut resources = Vec::new();
-
-        for block in body.blocks() {
-            if block.identifier() == "resource" {
-                let labels = block.labels();
-                let resource_type = labels[0].as_str();
-                resources.push(resource_type.to_string());
-            }
-        }
-
-        Ok(Terraform { resources })
+        Ok(body.into())
     }
 }
 
@@ -94,13 +67,18 @@ impl Parser for DirectoryParser {
             .into_iter()
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
-            .filter(|path| path.is_file())
-            .map(|path| file_parser.parse(path));
+            .map(|path| async {
+                if path.is_dir() {
+                    return self.parse(path).await;
+                }
+
+                return file_parser.parse(path).await;
+            });
 
         let results = join_all(futures).await;
         for result in results {
             let result = result?;
-            terraform = terraform.merge(&result);
+            terraform += result;
         }
 
         Ok(terraform)

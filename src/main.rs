@@ -1,8 +1,9 @@
-use std::{os, path, process::ExitCode};
+use std::process::ExitCode;
 
 use crate::parser::Parser;
 
 mod parser;
+mod terraform;
 
 async fn _main() -> Result<(), Box<dyn std::error::Error>> {
     let parser = parser::DirectoryParser::new();

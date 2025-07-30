@@ -9,3 +9,7 @@ resource "null_resource" "example2" {
     command = "echo Hello, World!"
   }
 }
+
+module "some_module" {
+  source = "./another_terraform"
+}
