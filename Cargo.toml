@@ -7,5 +7,6 @@ edition = "2024"
 env_logger = "0.11.8"
 futures = "0.3.31"
 hcl-rs = "0.19.2"
+log = "0.4.27"
 thiserror = "2.0.12"
 tokio = { version = "1.47.0", features = ["rt-multi-thread", "macros", "time"] }

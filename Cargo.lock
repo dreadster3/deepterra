@@ -116,6 +116,7 @@ dependencies = [
  "env_logger",
  "futures",
  "hcl-rs",
+ "log",
  "thiserror",
  "tokio",
 ]
