@@ -1,49 +1,51 @@
-use std::ops::{Add, AddAssign};
+use std::{fmt::Debug, path};
 
 const RESOURCE_KEY: &str = "resource";
 const MODULE_KEY: &str = "module";
 const MODULE_SOURCE_KEY: &str = "source";
 
-#[derive(Debug, Default)]
-pub struct Terraform {
-    resources: Vec<Resource>,
-    modules: Vec<Module>,
+#[derive(Debug)]
+pub struct TerraformManifest {
+    pub name: String,
+    pub path: path::PathBuf,
+    pub resources: Vec<Resource>,
+    pub modules: Vec<ModuleRef>,
+    pub submodules: Vec<TerraformManifest>,
 }
 
-impl Terraform {
-    pub fn merge(&self, other: &Self) -> Self {
-        Terraform {
-            resources: self
-                .resources
-                .iter()
-                .chain(other.resources.iter())
-                .cloned()
-                .collect(),
-            modules: self
-                .modules
-                .iter()
-                .chain(other.modules.iter())
-                .cloned()
-                .collect(),
+impl TerraformManifest {
+    pub fn new<N: Into<String>, P: AsRef<path::Path>>(name: N, path: P) -> Self {
+        let path = path.as_ref();
+        Self {
+            name: name.into(),
+            path: path.to_path_buf(),
+            resources: Vec::new(),
+            modules: Vec::new(),
+            submodules: Vec::new(),
         }
     }
-}
 
-impl Add for Terraform {
-    type Output = Self;
+    pub fn merge_file(&mut self, file: TerraformFile) -> &Self {
+        self.resources.extend(file.resources);
+        self.modules.extend(file.modules);
 
-    fn add(self, rhs: Self) -> Self::Output {
-        self.merge(&rhs)
+        self
+    }
+
+    pub fn add_submodule(&mut self, submodule: TerraformManifest) -> &Self {
+        self.submodules.push(submodule);
+
+        self
     }
 }
 
-impl AddAssign for Terraform {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = self.merge(&rhs);
-    }
+#[derive(Debug)]
+pub struct TerraformFile {
+    pub resources: Vec<Resource>,
+    pub modules: Vec<ModuleRef>,
 }
 
-impl From<hcl::Body> for Terraform {
+impl From<hcl::Body> for TerraformFile {
     fn from(body: hcl::Body) -> Self {
         let mut resources = Vec::new();
         let mut modules = Vec::new();
@@ -64,10 +66,10 @@ impl From<hcl::Body> for Terraform {
     }
 }
 
-#[derive(Debug, Clone)]
-struct Resource {
-    name: String,
-    kind: String,
+#[derive(Debug)]
+pub struct Resource {
+    pub name: String,
+    pub kind: String,
 }
 
 impl From<&hcl::Block> for Resource {
@@ -83,12 +85,70 @@ impl From<&hcl::Block> for Resource {
     }
 }
 
-#[derive(Debug, Clone)]
-struct Module {
-    source: String,
+#[derive(Debug)]
+pub enum ModuleRef {
+    Local(String),
+    Git(String),
+    S3(String),
+    Bitbucket(String),
+    Mercurial(String),
+    Http(String),
+    GCS(String),
+    Registry(String),
+    Unknown,
 }
 
-impl From<&hcl::Block> for Module {
+impl ModuleRef {
+    pub fn source(&self) -> &str {
+        match self {
+            Self::Local(source) => source,
+            Self::Git(source) => source,
+            Self::S3(source) => source,
+            Self::Bitbucket(source) => source,
+            Self::Mercurial(source) => source,
+            Self::Http(source) => source,
+            Self::GCS(source) => source,
+            Self::Registry(source) => source,
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn parse(source: &str) -> Self {
+        let source = source.trim();
+
+        if source.starts_with("./") || source.starts_with("../") {
+            return Self::Local(source.to_string());
+        }
+
+        if source.starts_with("git::") || source.contains("github.com") {
+            return Self::Git(source.to_string());
+        }
+
+        if source.starts_with("bitbucket.org") {
+            return Self::Bitbucket(source.to_string());
+        }
+
+        if source.starts_with("hg::") {
+            return Self::Mercurial(source.to_string());
+        }
+
+        if source.starts_with("s3::") {
+            return Self::S3(source.to_string());
+        }
+
+        if source.starts_with("gcs::") {
+            return Self::GCS(source.to_string());
+        }
+
+        if source.starts_with("http::") || source.starts_with("https::") {
+            return Self::Http(source.to_string());
+        }
+
+        Self::Registry(source.to_string())
+    }
+}
+
+impl From<&hcl::Block> for ModuleRef {
     fn from(block: &hcl::Block) -> Self {
         let body = block.body();
         let source = body
@@ -97,14 +157,10 @@ impl From<&hcl::Block> for Module {
 
         if let Some(source) = source {
             if let hcl::expr::Expression::String(source) = source.expr() {
-                return Self {
-                    source: source.to_string(),
-                };
+                return ModuleRef::parse(source);
             }
         }
 
-        Self {
-            source: "invalid".to_string(),
-        }
+        Self::Unknown
     }
 }

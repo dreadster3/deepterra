@@ -1,9 +1,11 @@
-use futures::future::join_all;
-use log::{debug, info};
+use futures::future::BoxFuture;
+use log::info;
 use std::{fs, path};
 use thiserror::Error;
+use tokio::join;
+use tokio::task::JoinSet;
 
-use crate::terraform::Terraform;
+use crate::terraform;
 
 #[derive(Error, Debug)]
 pub enum ParseError {
@@ -19,20 +21,10 @@ pub enum ParseError {
 
 type Result<T> = std::result::Result<T, ParseError>;
 
-pub trait Parser {
-    async fn parse<P: AsRef<path::Path>>(&self, path: P) -> Result<Terraform>;
-}
-
-pub struct FileParser {}
+struct FileParser {}
 
 impl FileParser {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl Parser for FileParser {
-    async fn parse<P: AsRef<path::Path>>(&self, path: P) -> Result<Terraform> {
+    pub async fn parse<P: AsRef<path::Path>>(path: P) -> Result<terraform::TerraformFile> {
         let path = path.as_ref();
         info!("Parsing file: {path:?}");
 
@@ -51,45 +43,58 @@ impl Parser for FileParser {
 pub struct DirectoryParser {}
 
 impl DirectoryParser {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
+    pub fn parse<P: AsRef<path::Path> + Send + 'static>(
+        path: P,
+    ) -> BoxFuture<'static, Result<terraform::TerraformManifest>> {
+        Box::pin(async move {
+            let path = path.as_ref();
+            info!("Parsing directory: {path:?}");
 
-impl Parser for DirectoryParser {
-    async fn parse<P: AsRef<path::Path>>(&self, path: P) -> Result<Terraform> {
-        let path = path.as_ref();
-        info!("Parsing directory: {path:?}");
+            if !path.exists() || !path.is_dir() {
+                return Err(ParseError::InvalidPath);
+            }
 
-        if !path.exists() || !path.is_dir() {
-            return Err(ParseError::InvalidPath);
-        }
+            let absolute_path = path.canonicalize()?;
 
-        let file_parser = FileParser::new();
-        let mut terraform = Terraform::default();
+            let folder_name = match absolute_path.file_name() {
+                Some(name) => name.to_string_lossy().to_string(),
+                None => String::from("root"),
+            };
 
-        let entries = fs::read_dir(path)?;
+            let mut terraform = terraform::TerraformManifest::new(folder_name, path);
 
-        let futures = entries
-            .into_iter()
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.path())
-            .map(|path| async {
+            let mut file_tasks = JoinSet::new();
+            let mut submodule_tasks = JoinSet::new();
+
+            let entries = fs::read_dir(absolute_path)?;
+            for entry in entries {
+                let entry = entry?;
+                let path = entry.path();
+
                 if path.is_dir() {
-                    debug!("Parsing nested directory: {path:?}");
-                    return self.parse(path).await;
+                    submodule_tasks.spawn(DirectoryParser::parse(path));
+                } else {
+                    file_tasks.spawn(FileParser::parse(path));
                 }
+            }
 
-                debug!("Parsing nested file: {path:?}");
-                return file_parser.parse(path).await;
-            });
+            let (files, submodules) = join!(file_tasks.join_all(), submodule_tasks.join_all());
 
-        let results = join_all(futures).await;
-        for result in results {
-            let result = result?;
-            terraform += result;
-        }
+            files
+                .into_iter()
+                .filter_map(|file| file.ok())
+                .for_each(|file| {
+                    terraform.merge_file(file);
+                });
 
-        Ok(terraform)
+            submodules
+                .into_iter()
+                .filter_map(|submodule| submodule.ok())
+                .for_each(|submodule| {
+                    terraform.add_submodule(submodule);
+                });
+
+            Ok(terraform)
+        })
     }
 }
