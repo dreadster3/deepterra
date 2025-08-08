@@ -1,10 +1,10 @@
-use std::process::ExitCode;
+use std::{collections::HashMap, process::ExitCode};
 
 use charming::{
     Chart, HtmlRenderer,
     component::{Legend, Title},
-    element::Tooltip,
-    series::{Graph, GraphCategory, GraphData, GraphLink, GraphNode},
+    element::{LineStyle, Tooltip},
+    series::{Graph, GraphCategory, GraphData, GraphLayout, GraphLink, GraphNode},
 };
 use env_logger::Env;
 use log::{error, info};
@@ -33,6 +33,7 @@ async fn _main() -> Result<(), Box<dyn std::error::Error>> {
         ],
     };
 
+    let mut resources = HashMap::<String, GraphNode>::new();
     let current = terraform;
     let mut id = 0;
     loop {
@@ -52,6 +53,12 @@ async fn _main() -> Result<(), Box<dyn std::error::Error>> {
         graph_data.nodes.push(node.clone());
 
         for resource in current.resources.iter() {
+            if let Some(resource_node) = resources.get_mut(&resource.kind) {
+                resource_node.value += 1.0;
+                resource_node.symbol_size = resource_node.value * SYMBOL_SIZE;
+                continue;
+            }
+
             let resource_node = GraphNode {
                 id: id.to_string(),
                 name: resource.kind.clone(),
@@ -62,14 +69,18 @@ async fn _main() -> Result<(), Box<dyn std::error::Error>> {
                 symbol_size: SYMBOL_SIZE,
                 label: None,
             };
+            id += 1;
+            resources.insert(resource.kind.clone(), resource_node);
+        }
+
+        for resource_node in resources.values() {
             let link = GraphLink {
                 source: node.id.clone(),
                 target: resource_node.id.clone(),
-                value: None,
+                value: Some(resource_node.value),
             };
-            id += 1;
 
-            graph_data.nodes.push(resource_node);
+            graph_data.nodes.push(resource_node.to_owned());
             graph_data.links.push(link);
         }
 
@@ -83,7 +94,13 @@ async fn _main() -> Result<(), Box<dyn std::error::Error>> {
         .title(Title::new().text("DeepTerra"))
         .legend(Legend::new().data(legend))
         .tooltip(Tooltip::new())
-        .series(Graph::new().data(graph_data));
+        .series(
+            Graph::new()
+                .layout(GraphLayout::Circular)
+                .roam(true)
+                .data(graph_data)
+                .line_style(LineStyle::new().color("source").curveness(0.3)),
+        );
 
     let mut renderer = HtmlRenderer::new("DeepTerra", 1000, 1000);
     renderer.save(&chart, "deepterra.html")?;
