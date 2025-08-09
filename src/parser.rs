@@ -1,5 +1,5 @@
 use futures::future::BoxFuture;
-use log::info;
+use log::{debug, info};
 use std::{fs, path};
 use thiserror::Error;
 use tokio::join;
@@ -48,12 +48,11 @@ impl DirectoryParser {
     ) -> BoxFuture<'static, Result<terraform::TerraformManifest>> {
         Box::pin(async move {
             let path = path.as_ref();
-            info!("Parsing directory: {path:?}");
-
             if !path.exists() || !path.is_dir() {
                 return Err(ParseError::InvalidPath);
             }
 
+            info!("Parsing directory: {path:?}");
             let absolute_path = path.canonicalize()?;
 
             let folder_name = match absolute_path.file_name() {
@@ -70,6 +69,11 @@ impl DirectoryParser {
             for entry in entries {
                 let entry = entry?;
                 let path = entry.path();
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                if file_name.starts_with(".") {
+                    debug!("Skipping hidden file or directory: {file_name}");
+                    continue; // Skip hidden files and directories
+                }
 
                 if path.is_dir() {
                     submodule_tasks.spawn(DirectoryParser::parse(path));

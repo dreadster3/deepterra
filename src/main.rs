@@ -20,7 +20,7 @@ async fn _main() -> Result<()> {
     let path = match args.nth(1) {
         Some(path) => path,
         None => {
-            println!("Usage: deepterra <path>");
+            eprintln!("Usage: deepterra <path>");
             return Err(anyhow::anyhow!("No path provided"));
         }
     };
