@@ -4,7 +4,7 @@ const RESOURCE_KEY: &str = "resource";
 const MODULE_KEY: &str = "module";
 const MODULE_SOURCE_KEY: &str = "source";
 const SYMBOL_SIZE: f64 = 10.0;
-const SYMBOL_SIZE_FACTOR: f64 = 0.3;
+const SYMBOL_SIZE_FACTOR: f64 = 2.0;
 
 #[derive(Debug)]
 pub struct TerraformManifest {
@@ -63,7 +63,7 @@ impl TerraformManifest {
                 if let Some(resource_node) = resources.get_mut(&resource.kind) {
                     resource_node.value += 1.0;
                     resource_node.symbol_size =
-                        resource_node.value * SYMBOL_SIZE * SYMBOL_SIZE_FACTOR;
+                        resource_node.value * SYMBOL_SIZE_FACTOR + SYMBOL_SIZE;
 
                     if let Some(link) = links.iter_mut().find(|link| {
                         link.source == module_node.id && link.target == resource_node.id
