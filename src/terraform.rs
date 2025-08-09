@@ -47,8 +47,9 @@ impl TerraformManifest {
         links: &mut Vec<charming::series::GraphLink>,
     ) {
         if !self.resources.is_empty() {
+            let module_node_id = uuid::Uuid::new_v4().to_string();
             let module_node = charming::series::GraphNode {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: module_node_id.clone(),
                 name: self.name.clone(),
                 x: 0.0,
                 y: 0.0,
@@ -57,7 +58,7 @@ impl TerraformManifest {
                 symbol_size: SYMBOL_SIZE,
                 label: None,
             };
-            modules.insert(module_node.name.clone(), module_node.clone());
+            modules.insert(module_node.name.clone(), module_node);
 
             for resource in self.resources.iter() {
                 if let Some(resource_node) = resources.get_mut(&resource.kind) {
@@ -66,12 +67,12 @@ impl TerraformManifest {
                         resource_node.value * SYMBOL_SIZE_FACTOR + SYMBOL_SIZE;
 
                     if let Some(link) = links.iter_mut().find(|link| {
-                        link.source == module_node.id && link.target == resource_node.id
+                        link.source == module_node_id.clone() && link.target == resource_node.id
                     }) {
                         link.value = Some(link.value.unwrap_or(1.0f64) + 1.0f64);
                     } else {
                         let link = charming::series::GraphLink {
-                            source: module_node.id.clone(),
+                            source: module_node_id.clone(),
                             target: resource_node.id.clone(),
                             value: Some(1.0),
                         };
@@ -81,8 +82,9 @@ impl TerraformManifest {
                     continue;
                 }
 
+                let resource_node_id = uuid::Uuid::new_v4().to_string();
                 let resource_node = charming::series::GraphNode {
-                    id: uuid::Uuid::new_v4().to_string(),
+                    id: resource_node_id.clone(),
                     name: resource.kind.clone(),
                     x: 0.0,
                     y: 0.0,
@@ -91,10 +93,10 @@ impl TerraformManifest {
                     symbol_size: SYMBOL_SIZE,
                     label: None,
                 };
-                resources.insert(resource.kind.clone(), resource_node.clone());
+                resources.insert(resource.kind.clone(), resource_node);
                 links.push(charming::series::GraphLink {
-                    source: module_node.id.clone(),
-                    target: resource_node.id.clone(),
+                    source: module_node_id.clone(),
+                    target: resource_node_id.clone(),
                     value: Some(1.0),
                 });
             }
