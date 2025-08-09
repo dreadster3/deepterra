@@ -1,93 +1,35 @@
-use std::{collections::HashMap, process::ExitCode};
+use anyhow::Result;
+use std::{env, process::ExitCode};
 
 use charming::{
     Chart, HtmlRenderer,
     component::{Legend, Title},
     element::{LineStyle, Tooltip},
-    series::{Graph, GraphCategory, GraphData, GraphLayout, GraphLink, GraphNode},
+    series::{Graph, GraphLayout},
 };
 use env_logger::Env;
-use log::{error, info};
+use log::{debug, error};
 
 mod parser;
 mod terraform;
 
-const SYMBOL_SIZE: f64 = 20.0;
+async fn _main() -> Result<()> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("off")).init();
 
-async fn _main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-
-    let terraform = parser::DirectoryParser::parse("./terraform").await?;
-    info!("{terraform:?}");
-
-    let mut graph_data = GraphData {
-        nodes: vec![],
-        links: vec![],
-        categories: vec![
-            GraphCategory {
-                name: "module".to_string(),
-            },
-            GraphCategory {
-                name: "resource".to_string(),
-            },
-        ],
+    let mut args = env::args();
+    let path = match args.nth(1) {
+        Some(path) => path,
+        None => {
+            println!("Usage: deepterra <path>");
+            return Err(anyhow::anyhow!("No path provided"));
+        }
     };
 
-    let mut resources = HashMap::<String, GraphNode>::new();
-    let current = terraform;
-    let mut id = 0;
-    loop {
-        let node = GraphNode {
-            id: id.to_string(),
-            name: current.name.clone(),
-            x: id as f64,
-            y: id as f64,
-            category: 0,
-            value: 1.0,
-            symbol_size: SYMBOL_SIZE,
-            label: None,
-        };
+    let terraform = parser::DirectoryParser::parse(path).await?;
+    debug!("{terraform:?}");
 
-        id += 1;
-
-        graph_data.nodes.push(node.clone());
-
-        for resource in current.resources.iter() {
-            if let Some(resource_node) = resources.get_mut(&resource.kind) {
-                resource_node.value += 1.0;
-                resource_node.symbol_size = resource_node.value * SYMBOL_SIZE;
-                continue;
-            }
-
-            let resource_node = GraphNode {
-                id: id.to_string(),
-                name: resource.kind.clone(),
-                x: id as f64,
-                y: id as f64,
-                category: 1,
-                value: 1.0,
-                symbol_size: SYMBOL_SIZE,
-                label: None,
-            };
-            id += 1;
-            resources.insert(resource.kind.clone(), resource_node);
-        }
-
-        for resource_node in resources.values() {
-            let link = GraphLink {
-                source: node.id.clone(),
-                target: resource_node.id.clone(),
-                value: Some(resource_node.value),
-            };
-
-            graph_data.nodes.push(resource_node.to_owned());
-            graph_data.links.push(link);
-        }
-
-        if true {
-            break;
-        }
-    }
+    let graph_data = terraform.to_graph();
+    debug!("{graph_data:?}");
 
     let legend = vec!["module", "resource"];
     let chart = Chart::new()

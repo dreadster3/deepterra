@@ -1,8 +1,9 @@
-use std::{fmt::Debug, path};
+use std::{collections::HashMap, fmt::Debug, path};
 
 const RESOURCE_KEY: &str = "resource";
 const MODULE_KEY: &str = "module";
 const MODULE_SOURCE_KEY: &str = "source";
+const SYMBOL_SIZE: f64 = 20.0;
 
 #[derive(Debug)]
 pub struct TerraformManifest {
@@ -36,6 +37,97 @@ impl TerraformManifest {
         self.submodules.push(submodule);
 
         self
+    }
+
+    fn process_manifest_resources(
+        &self,
+        modules: &mut HashMap<String, charming::series::GraphNode>,
+        resources: &mut HashMap<String, charming::series::GraphNode>,
+        links: &mut Vec<charming::series::GraphLink>,
+    ) {
+        if !self.resources.is_empty() {
+            let module_node = charming::series::GraphNode {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: self.name.clone(),
+                x: 0.0,
+                y: 0.0,
+                category: 0,
+                value: 1.0,
+                symbol_size: SYMBOL_SIZE,
+                label: None,
+            };
+            modules.insert(module_node.name.clone(), module_node.clone());
+
+            for resource in self.resources.iter() {
+                if let Some(resource_node) = resources.get_mut(&resource.kind) {
+                    resource_node.value += 1.0;
+                    resource_node.symbol_size = resource_node.value * SYMBOL_SIZE;
+
+                    if let Some(link) = links.iter_mut().find(|link| {
+                        link.source == module_node.id && link.target == resource_node.id
+                    }) {
+                        link.value = Some(link.value.unwrap_or(1.0f64) + 1.0f64);
+                    } else {
+                        let link = charming::series::GraphLink {
+                            source: module_node.id.clone(),
+                            target: resource_node.id.clone(),
+                            value: Some(1.0),
+                        };
+                        links.push(link);
+                    }
+
+                    continue;
+                }
+
+                let resource_node = charming::series::GraphNode {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name: resource.kind.clone(),
+                    x: 0.0,
+                    y: 0.0,
+                    category: 1,
+                    value: 1.0,
+                    symbol_size: SYMBOL_SIZE,
+                    label: None,
+                };
+                resources.insert(resource.kind.clone(), resource_node.clone());
+                links.push(charming::series::GraphLink {
+                    source: module_node.id.clone(),
+                    target: resource_node.id.clone(),
+                    value: Some(1.0),
+                });
+            }
+        }
+
+        for submodule in self.submodules.iter() {
+            submodule.process_manifest_resources(modules, resources, links);
+        }
+    }
+
+    pub fn to_graph(&self) -> charming::series::GraphData {
+        let mut graph_data = charming::series::GraphData {
+            nodes: vec![],
+            links: vec![],
+            categories: vec![
+                charming::series::GraphCategory {
+                    name: "module".to_string(),
+                },
+                charming::series::GraphCategory {
+                    name: "resource".to_string(),
+                },
+            ],
+        };
+
+        let mut modules = HashMap::<String, charming::series::GraphNode>::new();
+        let mut resources = HashMap::<String, charming::series::GraphNode>::new();
+        let mut links = Vec::<charming::series::GraphLink>::new();
+
+        self.process_manifest_resources(&mut modules, &mut resources, &mut links);
+
+        graph_data.nodes.extend(modules.into_values());
+        graph_data.nodes.extend(resources.into_values());
+        graph_data.links.extend(links);
+
+        graph_data
     }
 }
 
