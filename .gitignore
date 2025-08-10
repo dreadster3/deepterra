@@ -4,3 +4,7 @@ terraform
 .direnv
 deepterra.html
 aggregator
+# Added by goreleaser init:
+dist/
+.intentionally-empty-file.o
+target/

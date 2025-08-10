@@ -4,9 +4,17 @@
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    nur = {
+      url = "github:nix-community/NUR";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = inputs@{ flake-parts, ... }:
+  outputs = inputs@{ self, nur, fenix, flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
         # To import a flake module
@@ -17,18 +25,56 @@
       ];
       systems =
         [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
-      perSystem = { config, self', inputs', pkgs, system, ... }: {
-        # Per-system attributes can be defined here. The self' and inputs'
-        # module parameters provide easy access to attributes of the same
-        # system.
+      perSystem = { self', pkgs, ... }:
+        let
+          nur-pkgs = nur.legacyPackages.${pkgs.system};
+          version = self.rev or self.dirtyRev;
+          toolchain = with fenix.packages.${pkgs.system};
+            combine [
+              stable.cargo
+              stable.rustc
+              targets.x86_64-unknown-linux-gnu.stable.rust-std
+              targets.x86_64-apple-darwin.stable.rust-std
+              targets.x86_64-pc-windows-gnu.stable.rust-std
+              targets.aarch64-unknown-linux-gnu.stable.rust-std
+              targets.aarch64-apple-darwin.stable.rust-std
+            ];
+        in {
+          # Per-system attributes can be defined here. The self' and inputs'
+          # module parameters provide easy access to attributes of the same
+          # system.
 
-        # Equivalent to  inputs'.nixpkgs.legacyPackages.hello;
-        packages.default = pkgs.hello;
+          # Equivalent to  inputs'.nixpkgs.legacyPackages.hello;
+          packages.default = (pkgs.makeRustPlatform {
+            cargo = toolchain;
+            rustc = toolchain;
+          }).buildRustPackage {
+            inherit version;
+            pname = "deepterra";
+            src = ./.;
+            cargoLock.lockFile = ./Cargo.lock;
 
-        # Dev shells
-        devShells.default =
-          pkgs.mkShell { buildInputs = with pkgs; [ rustc cargo ]; };
-      };
+            meta = with pkgs.lib; {
+              description =
+                "A tool to parse terraform and generate a resource dependency graph";
+              homepage = "https://github.com/dreadster/deepterra";
+              license = licenses.asl20;
+            };
+          };
+
+          # Dev shells
+          devShells.default = pkgs.mkShell {
+            buildInputs = with pkgs; [
+              toolchain
+              rustfmt
+              clippy
+              rustup
+              zig
+              nur-pkgs.repos.goreleaser.goreleaser
+              pkgsCross.mingwW64.buildPackages.binutils
+            ];
+          };
+        };
       flake = {
         # The usual flake attributes can be defined here, including system-
         # agnostic ones like nixosModule and system-enumerating ones, although
