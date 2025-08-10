@@ -26,7 +26,11 @@ async fn _main() -> Result<()> {
     let graph_data = terraform.to_graph();
     debug!("{graph_data:?}");
 
-    let legend = vec!["module", "resource"];
+    let legend = graph_data
+        .categories
+        .iter()
+        .map(|category| category.name.clone())
+        .collect();
     let chart = Chart::new()
         .title(Title::new().text("DeepTerra"))
         .legend(Legend::new().data(legend))
