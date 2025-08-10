@@ -8,9 +8,13 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nur = {
+      url = "github:nix-community/NUR";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = inputs@{ self, fenix, flake-parts, ... }:
+  outputs = inputs@{ self, nur, fenix, flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
         # To import a flake module
@@ -23,6 +27,7 @@
         [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
       perSystem = { self', pkgs, ... }:
         let
+          nur-pkgs = nur.legacyPackages.${pkgs.system};
           version = self.rev or self.dirtyRev;
           toolchain = with fenix.packages.${pkgs.system};
             combine [
@@ -65,7 +70,7 @@
               clippy
               rustup
               zig
-              goreleaser
+              nur-pkgs.repos.goreleaser.goreleaser
               pkgsCross.mingwW64.buildPackages.binutils
             ];
           };
