@@ -1,4 +1,3 @@
-use anyhow::Context;
 use futures::future::BoxFuture;
 use log::{debug, error, info, warn};
 use std::{fs, path};

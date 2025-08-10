@@ -1,5 +1,6 @@
 use anyhow::Result;
-use std::{env, process::ExitCode};
+use clap::Parser;
+use std::process::ExitCode;
 
 use charming::{
     Chart, HtmlRenderer,
@@ -10,22 +11,16 @@ use charming::{
 use env_logger::Env;
 use log::{debug, error};
 
+mod cli;
 mod parser;
 mod terraform;
 
 async fn _main() -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("off")).init();
+    let args = cli::Args::parse();
 
-    let mut args = env::args();
-    let path = match args.nth(1) {
-        Some(path) => path,
-        None => {
-            eprintln!("Usage: deepterra <path>");
-            return Err(anyhow::anyhow!("No path provided"));
-        }
-    };
+    env_logger::Builder::from_env(Env::default().default_filter_or(args.log_level())).init();
 
-    let terraform = parser::DirectoryParser::parse(path).await?;
+    let terraform = parser::DirectoryParser::parse(args.path).await?;
     debug!("{terraform:?}");
 
     let graph_data = terraform.to_graph();
@@ -45,7 +40,7 @@ async fn _main() -> Result<()> {
         );
 
     let mut renderer = HtmlRenderer::new("DeepTerra", 1000, 1000);
-    renderer.save(&chart, "deepterra.html")?;
+    renderer.save(&chart, args.output)?;
 
     Ok(())
 }
