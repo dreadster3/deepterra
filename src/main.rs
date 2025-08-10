@@ -29,7 +29,7 @@ async fn _main() -> Result<()> {
     let legend = graph_data
         .categories
         .iter()
-        .map(|category| category.name.clone())
+        .map(|category| category.name.as_ref())
         .collect();
     let chart = Chart::new()
         .title(Title::new().text("DeepTerra"))
