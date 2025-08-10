@@ -1,1 +1,6 @@
 /target
+terraform
+.envrc
+.direnv
+deepterra.html
+aggregator
