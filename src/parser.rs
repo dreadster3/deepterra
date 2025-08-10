@@ -1,5 +1,6 @@
+use anyhow::Context;
 use futures::future::BoxFuture;
-use log::{debug, info};
+use log::{debug, error, info, warn};
 use std::{fs, path};
 use thiserror::Error;
 use tokio::join;
@@ -33,8 +34,13 @@ impl FileParser {
         }
 
         let contents = fs::read_to_string(path)?;
-        let body: hcl::Body = hcl::from_str(contents.as_str())
-            .map_err(|e| ParseError::HCLError(path.to_string_lossy().to_string(), e))?;
+        let body: hcl::Body = match hcl::from_str(contents.as_str()) {
+            Ok(body) => body,
+            Err(e) => {
+                warn!("Failed to parse HCL file: {path:?}\n{e}");
+                return Err(ParseError::HCLError(path.to_string_lossy().to_string(), e));
+            }
+        };
 
         Ok(body.into())
     }
@@ -49,6 +55,7 @@ impl DirectoryParser {
         Box::pin(async move {
             let path = path.as_ref();
             if !path.exists() || !path.is_dir() {
+                warn!("Invalid path provided: {path:?}");
                 return Err(ParseError::InvalidPath);
             }
 
