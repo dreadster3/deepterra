@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use std::process::ExitCode;
 
@@ -20,7 +20,9 @@ async fn _main() -> Result<()> {
 
     env_logger::Builder::from_env(Env::default().default_filter_or(args.log_level())).init();
 
-    let terraform = parser::DirectoryParser::parse(args.path).await?;
+    let terraform = parser::DirectoryParser::parse(args.path)
+        .await
+        .context("Failed to parse terraform manifest")?;
     debug!("{terraform:?}");
 
     let graph_data = terraform.to_graph();
@@ -44,7 +46,10 @@ async fn _main() -> Result<()> {
         );
 
     let mut renderer = HtmlRenderer::new("DeepTerra", 1000, 1000);
-    renderer.save(&chart, args.output)?;
+    renderer
+        .save(&chart, &args.output)
+        .with_context(|| format!("Failed to save to {}", args.output))?;
+    println!("Saved to {}", args.output);
 
     Ok(())
 }
@@ -53,6 +58,7 @@ async fn _main() -> Result<()> {
 async fn main() -> ExitCode {
     if let Err(e) = _main().await {
         error!("{e}");
+        eprintln!("{e:?}");
         return ExitCode::FAILURE;
     }
 
