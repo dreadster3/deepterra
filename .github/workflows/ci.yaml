@@ -17,6 +17,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Build
-        run: cargo build --verbose
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: build --clean
       - name: Run tests
         run: cargo test --verbose
