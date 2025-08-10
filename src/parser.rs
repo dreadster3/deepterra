@@ -13,8 +13,8 @@ pub enum ParseError {
     #[error("Failed to read file: {0}")]
     IOError(#[from] std::io::Error),
 
-    #[error("Failed to parse HCL ({0}): {1}")]
-    HCLError(String, hcl::Error),
+    #[error("Failed to parse HCL: {0}")]
+    HCLError(#[from] hcl::Error),
 
     #[error("Invalid path provided")]
     InvalidPath,
@@ -33,14 +33,10 @@ impl FileParser {
             return Err(ParseError::InvalidPath);
         }
 
-        let contents = fs::read_to_string(path)?;
-        let body: hcl::Body = match hcl::from_str(contents.as_str()) {
-            Ok(body) => body,
-            Err(e) => {
-                warn!("Failed to parse HCL file: {path:?}\n{e}");
-                return Err(ParseError::HCLError(path.to_string_lossy().to_string(), e));
-            }
-        };
+        let contents = fs::read_to_string(path)
+            .inspect_err(|e| warn!("failed to read file: {path:?}\n{e}"))?;
+        let body: hcl::Body = hcl::from_str(contents.as_str())
+            .inspect_err(|e| warn!("failed to parse file: {path:?}\n{e}"))?;
 
         Ok(body.into())
     }
