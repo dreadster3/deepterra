@@ -20,7 +20,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 
-      - name: Goreleaser
+      - name: Go Releaser
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: nix develop -c goreleaser release --clean
