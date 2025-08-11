@@ -9,18 +9,18 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-      - name: Goreleaser
-        uses: goreleaser/goreleaser-action@v6
+
+      - uses: cachix/install-nix-action@v31
         with:
-          version: latest
-          args: release --clean
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Go Releaser
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: nix develop -c goreleaser release --clean
