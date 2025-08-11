@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  pull_request:
+    branches: ["main"]
   push:
     tags:
       - "*"
@@ -17,10 +19,16 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
+      - name: Fix dlltool
+        run: |
+          echo < EOF > /usr/local/bin/x86_64-w64-mingw32-dlltool
+          #!/bin/sh
+          /usr/bin/zig dlltool $@
+          EOF
       - name: Goreleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
-          args: release --clean
+          args: release --clean --skip=publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
