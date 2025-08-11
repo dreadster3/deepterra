@@ -23,6 +23,7 @@ jobs:
         uses: mlugg/setup-zig@v2
       - name: Fix dlltool
         run: |
+          mkdir -p $HOME/.local/bin/
           cat << EOF > $HOME/.local/bin/x86_64-w64-mingw32-dlltool
           #!/bin/sh
           /usr/bin/zig dlltool $@
