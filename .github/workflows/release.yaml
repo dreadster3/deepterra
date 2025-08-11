@@ -21,10 +21,14 @@ jobs:
         run: echo "$PATH"
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
-      - name: Set up MinGW
-        uses: egor-tensin/setup-mingw@v2
-        with:
-          platform: x64
+      - name: Fix dlltool
+        run: |
+          mkdir -p $HOME/.local/bin/
+          cat << EOF > $HOME/.local/bin/x86_64-w64-mingw32-dlltool
+          #!/bin/sh
+          zig dlltool $@
+          EOF
+          chmod +x $HOME/.local/bin/x86_64-w64-mingw32-dlltool
       - name: Goreleaser
         uses: goreleaser/goreleaser-action@v6
         with:
