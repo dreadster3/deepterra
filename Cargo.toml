@@ -1,6 +1,6 @@
 [package]
 name = "deepterra"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["dreadster3 <contact@dreadster3.mozmail.com>"]
 description = "A tool to parse terraform and generate a resource dependency graph"
