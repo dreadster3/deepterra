@@ -66,8 +66,7 @@
           devShells.default = pkgs.mkShell {
             buildInputs = with pkgs; [
               toolchain
-              rustfmt
-              clippy
+              rust-analyzer
               rustup
               zig
               nur-pkgs.repos.goreleaser.goreleaser
