@@ -1,5 +1,6 @@
 use futures::future::BoxFuture;
 use log::{debug, error, info, warn};
+use std::sync::Arc;
 use std::{fs, path};
 use thiserror::Error;
 use tokio::join;
@@ -16,20 +17,47 @@ pub enum ParseError {
     HCLError(#[from] hcl::Error),
 
     #[error("Invalid path provided")]
-    InvalidPath,
+    PathError,
+
+    #[error("Invalid glob pattern: {0}")]
+    GlobError(#[from] glob::PatternError),
+
+    #[error("Skipping directory")]
+    Skip,
 }
 
 type Result<T> = std::result::Result<T, ParseError>;
 
+struct ParserOptions {
+    ignore: Option<String>,
+}
+
+impl ParserOptions {
+    pub fn new(ignore: Option<String>) -> Self {
+        Self { ignore }
+    }
+}
+
 struct FileParser {}
 
 impl FileParser {
-    pub async fn parse<P: AsRef<path::Path>>(path: P) -> Result<terraform::TerraformFile> {
+    async fn internal_parse<P: AsRef<path::Path>>(
+        path: P,
+        options: Arc<ParserOptions>,
+    ) -> Result<terraform::TerraformFile> {
         let path = path.as_ref();
         info!("Parsing file: {path:?}");
 
+        if let Some(ignore) = options.ignore.as_ref() {
+            let pattern = glob::Pattern::new(ignore)?;
+            if pattern.matches_path(path) {
+                debug!("Skipping file: {path:?}");
+                return Err(ParseError::Skip);
+            }
+        }
+
         if !path.exists() || !path.is_file() {
-            return Err(ParseError::InvalidPath);
+            return Err(ParseError::PathError);
         }
 
         let contents = fs::read_to_string(path)
@@ -41,17 +69,41 @@ impl FileParser {
     }
 }
 
-pub struct DirectoryParser {}
+pub struct DirectoryParser {
+    options: Arc<ParserOptions>,
+}
 
 impl DirectoryParser {
-    pub fn parse<P: AsRef<path::Path> + Send + 'static>(
+    pub fn new(ignore: Option<String>) -> Self {
+        Self {
+            options: Arc::new(ParserOptions::new(ignore)),
+        }
+    }
+
+    pub async fn parse<P: AsRef<path::Path> + Send + 'static>(
+        &self,
         path: P,
+    ) -> Result<terraform::TerraformManifest> {
+        let path = path.as_ref().to_path_buf();
+        DirectoryParser::internal_parse(path, self.options.clone()).await
+    }
+
+    fn internal_parse(
+        path: path::PathBuf,
+        options: Arc<ParserOptions>,
     ) -> BoxFuture<'static, Result<terraform::TerraformManifest>> {
         Box::pin(async move {
-            let path = path.as_ref();
             if !path.exists() || !path.is_dir() {
                 warn!("Invalid path provided: {path:?}");
-                return Err(ParseError::InvalidPath);
+                return Err(ParseError::PathError);
+            }
+
+            if let Some(ignore) = options.ignore.as_ref() {
+                let pattern = glob::Pattern::new(ignore)?;
+                if pattern.matches_path(path.as_path()) {
+                    debug!("Skipping directory: {path:?}");
+                    return Err(ParseError::Skip);
+                }
             }
 
             info!("Parsing directory: {path:?}");
@@ -78,9 +130,9 @@ impl DirectoryParser {
                 }
 
                 if path.is_dir() {
-                    submodule_tasks.spawn(DirectoryParser::parse(path));
+                    submodule_tasks.spawn(DirectoryParser::internal_parse(path, options.clone()));
                 } else {
-                    file_tasks.spawn(FileParser::parse(path));
+                    file_tasks.spawn(FileParser::internal_parse(path, options.clone()));
                 }
             }
 

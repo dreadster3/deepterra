@@ -20,7 +20,10 @@ async fn _main() -> Result<()> {
 
     env_logger::Builder::from_env(Env::default().default_filter_or(args.log_level())).init();
 
-    let terraform = parser::DirectoryParser::parse(args.path)
+    let parser = parser::DirectoryParser::new(args.ignore);
+
+    let terraform = parser
+        .parse(args.path)
         .await
         .context("Failed to parse terraform manifest")?;
     debug!("{terraform:?}");

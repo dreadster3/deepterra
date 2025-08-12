@@ -7,6 +7,10 @@ pub struct Args {
     #[arg(short, long, default_value_t = String::from("deepterra.html"))]
     pub output: String,
 
+    /// Ignore files matching this glob pattern
+    #[arg(short, long)]
+    pub ignore: Option<String>,
+
     /// Enable verbose logging (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
