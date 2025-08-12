@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt::Debug, path};
 
+use log::{debug, info};
+
 const RESOURCE_KEY: &str = "resource";
 const MODULE_KEY: &str = "module";
 const MODULE_SOURCE_KEY: &str = "source";
@@ -62,6 +64,7 @@ impl TerraformManifest {
 
             for resource in self.resources.iter() {
                 if let Some(resource_node) = resources.get_mut(&resource.kind) {
+                    debug!("Resource {resource:?} already exists, incrementing value");
                     resource_node.value += 1.0;
                     resource_node.symbol_size =
                         resource_node.value * SYMBOL_SIZE_FACTOR + SYMBOL_SIZE;
@@ -82,6 +85,7 @@ impl TerraformManifest {
                     continue;
                 }
 
+                info!("Found new resource {resource:?}");
                 let resource_node_id = uuid::Uuid::new_v4().to_string();
                 let resource_node = charming::series::GraphNode {
                     id: resource_node_id.clone(),
@@ -102,7 +106,8 @@ impl TerraformManifest {
             }
 
             for module in self.modules.iter() {
-                if let Some(module_ref_node) = modules.get_mut(module.name()) {
+                if let Some(module_ref_node) = modules.get_mut(&module.name()) {
+                    debug!("Module {module:?} already exists, incrementing value");
                     module_ref_node.value += 1.0;
                     module_ref_node.symbol_size =
                         module_ref_node.value * SYMBOL_SIZE_FACTOR + SYMBOL_SIZE;
@@ -123,6 +128,7 @@ impl TerraformManifest {
                     continue;
                 }
 
+                info!("Found new module {module:?}");
                 let module_ref_node_id = uuid::Uuid::new_v4().to_string();
                 let module_ref_node = charming::series::GraphNode {
                     id: module_ref_node_id.clone(),
@@ -220,12 +226,11 @@ impl From<&hcl::Block> for Resource {
 
 trait ModuleSource {
     fn source(&self) -> &str;
-    fn name(&self) -> &str;
-    fn version(&self) -> Option<&str>;
+    fn name(&self) -> String;
 }
 
 #[derive(Debug)]
-struct LocalModuleRef {
+pub struct LocalModuleRef {
     source: String,
 }
 
@@ -235,28 +240,52 @@ impl LocalModuleRef {
     }
 }
 
+#[derive(Debug)]
+pub struct GitModuleRef {
+    source: String,
+}
+
+impl GitModuleRef {
+    fn new(source: String) -> Self {
+        Self { source }
+    }
+}
+
+impl ModuleSource for GitModuleRef {
+    fn source(&self) -> &str {
+        self.source.as_str()
+    }
+
+    fn name(&self) -> String {
+        url::Url::parse(self.source().strip_prefix("git::").unwrap_or(self.source()))
+            .ok()
+            .as_ref()
+            .and_then(|url| url.path_segments())
+            .and_then(|mut segments| segments.next_back())
+            .unwrap_or_default()
+            .to_string()
+    }
+}
+
 impl ModuleSource for LocalModuleRef {
     fn source(&self) -> &str {
         self.source.as_str()
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> String {
         let path = path::Path::new(self.source());
 
         path.file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default()
-    }
-
-    fn version(&self) -> Option<&str> {
-        None
+            .to_string()
     }
 }
 
 #[derive(Debug)]
 pub enum ModuleRef {
     Local(LocalModuleRef),
-    Git(String),
+    Git(GitModuleRef),
     S3(String),
     Bitbucket(String),
     Mercurial(String),
@@ -270,20 +299,15 @@ impl ModuleSource for ModuleRef {
     fn source(&self) -> &str {
         match self {
             Self::Local(module_ref) => module_ref.source(),
+            Self::Git(module_ref) => module_ref.source(),
             _ => todo!(),
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> String {
         match self {
             Self::Local(module_ref) => module_ref.name(),
-            _ => todo!(),
-        }
-    }
-
-    fn version(&self) -> Option<&str> {
-        match self {
-            Self::Local(module_ref) => module_ref.version(),
+            Self::Git(module_ref) => module_ref.name(),
             _ => todo!(),
         }
     }
@@ -298,7 +322,7 @@ impl ModuleRef {
         }
 
         if source.starts_with("git::") || source.contains("github.com") {
-            return Self::Git(source.to_string());
+            return Self::Git(GitModuleRef::new(source.to_string()));
         }
 
         if source.starts_with("bitbucket.org") {
