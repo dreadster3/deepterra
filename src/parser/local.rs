@@ -1,48 +1,18 @@
+use super::{ParseError, ParserOptions, Result};
 use futures::future::BoxFuture;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use std::sync::Arc;
 use std::{fs, path};
-use thiserror::Error;
 use tokio::join;
 use tokio::task::JoinSet;
 
 use crate::terraform;
 
-#[derive(Error, Debug)]
-pub enum ParseError {
-    #[error("Failed to read file: {0}")]
-    IOError(#[from] std::io::Error),
-
-    #[error("Failed to parse HCL: {0}")]
-    HCLError(#[from] hcl::Error),
-
-    #[error("Invalid path provided")]
-    PathError,
-
-    #[error("Invalid glob pattern: {0}")]
-    GlobError(#[from] glob::PatternError),
-
-    #[error("Skipping directory")]
-    Skip,
-}
-
-type Result<T> = std::result::Result<T, ParseError>;
-
-struct ParserOptions {
-    ignore: Option<String>,
-}
-
-impl ParserOptions {
-    pub fn new(ignore: Option<String>) -> Self {
-        Self { ignore }
-    }
-}
-
 struct FileParser {}
 
 impl FileParser {
-    async fn internal_parse<P: AsRef<path::Path>>(
-        path: P,
+    pub async fn parse(
+        path: path::PathBuf,
         options: Arc<ParserOptions>,
     ) -> Result<terraform::TerraformFile> {
         let path = path.as_ref();
@@ -69,26 +39,10 @@ impl FileParser {
     }
 }
 
-pub struct DirectoryParser {
-    options: Arc<ParserOptions>,
-}
+pub struct DirectoryParser {}
 
 impl DirectoryParser {
-    pub fn new(ignore: Option<String>) -> Self {
-        Self {
-            options: Arc::new(ParserOptions::new(ignore)),
-        }
-    }
-
-    pub async fn parse<P: AsRef<path::Path> + Send + 'static>(
-        &self,
-        path: P,
-    ) -> Result<terraform::TerraformManifest> {
-        let path = path.as_ref().to_path_buf();
-        DirectoryParser::internal_parse(path, self.options.clone()).await
-    }
-
-    fn internal_parse(
+    pub fn parse(
         path: path::PathBuf,
         options: Arc<ParserOptions>,
     ) -> BoxFuture<'static, Result<terraform::TerraformManifest>> {
@@ -130,9 +84,9 @@ impl DirectoryParser {
                 }
 
                 if path.is_dir() {
-                    submodule_tasks.spawn(DirectoryParser::internal_parse(path, options.clone()));
+                    submodule_tasks.spawn(DirectoryParser::parse(path, options.clone()));
                 } else {
-                    file_tasks.spawn(FileParser::internal_parse(path, options.clone()));
+                    file_tasks.spawn(FileParser::parse(path, options.clone()));
                 }
             }
 
