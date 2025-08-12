@@ -84,15 +84,15 @@ impl DirectoryParser {
         &self,
         path: P,
     ) -> Result<terraform::TerraformManifest> {
+        let path = path.as_ref().to_path_buf();
         DirectoryParser::internal_parse(path, self.options.clone()).await
     }
 
-    fn internal_parse<P: AsRef<path::Path> + Send + 'static>(
-        path: P,
+    fn internal_parse(
+        path: path::PathBuf,
         options: Arc<ParserOptions>,
     ) -> BoxFuture<'static, Result<terraform::TerraformManifest>> {
         Box::pin(async move {
-            let path = path.as_ref();
             if !path.exists() || !path.is_dir() {
                 warn!("Invalid path provided: {path:?}");
                 return Err(ParseError::PathError);
@@ -100,7 +100,7 @@ impl DirectoryParser {
 
             if let Some(ignore) = options.ignore.as_ref() {
                 let pattern = glob::Pattern::new(ignore)?;
-                if pattern.matches_path(path) {
+                if pattern.matches_path(path.as_path()) {
                     debug!("Skipping directory: {path:?}");
                     return Err(ParseError::Skip);
                 }
