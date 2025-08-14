@@ -20,6 +20,9 @@ pub enum ParseError {
     #[error("Invalid glob pattern: {0}")]
     GlobError(#[from] glob::PatternError),
 
+    #[error("Github parser error: {0}")]
+    GithubError(#[from] github::GithubParseError),
+
     #[error("Skipping directory")]
     Skip,
 }
@@ -47,7 +50,8 @@ impl Parser {
         }
     }
 
-    pub async fn parse(&self, path: &str) -> Result<terraform::TerraformManifest> {
+    pub async fn parse(&self, path: impl Into<String>) -> Result<terraform::TerraformManifest> {
+        let path: String = path.into();
         if path.starts_with("github:") {
             return github::GithubParser::parse(path).await;
         }

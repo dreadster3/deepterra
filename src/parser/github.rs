@@ -1,10 +1,94 @@
-use super::Result;
+use std::sync::Arc;
+
+use log::info;
+
+use crate::parser::{ParseError, Result};
 use crate::terraform;
+
+#[derive(Debug, thiserror::Error)]
+pub enum GithubParseError {
+    #[error("octocrab error: {0}")]
+    OctocrabError(#[from] octocrab::Error),
+
+    #[error("Missing authentication")]
+    MissingAuthentication,
+}
 
 pub struct GithubParser {}
 
 impl GithubParser {
-    pub async fn parse(scope: &str) -> Result<terraform::TerraformManifest> {
+    fn authentication() -> Option<octocrab::auth::Auth> {
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            info!("Using GITHUB_TOKEN");
+            return Some(octocrab::auth::Auth::PersonalToken(token.into()));
+        }
+
+        if let Ok(app_id) = std::env::var("GITHUB_APP_ID") {
+            if let Ok(app_key) = std::env::var("GITHUB_APP_KEY") {
+                let app_id = app_id.parse::<u64>().ok()?;
+                info!("Using GITHUB_APP_ID({app_id}) and GITHUB_APP_KEY");
+
+                return Some(octocrab::auth::Auth::App(octocrab::auth::AppAuth {
+                    key: jsonwebtoken::EncodingKey::from_secret(app_key.as_bytes()),
+                    app_id: octocrab::models::AppId::from(app_id),
+                }));
+            }
+        }
+
+        let command = std::process::Command::new("gh")
+            .args(["auth", "token"])
+            .output();
+
+        if let Ok(output) = command {
+            if output.status.success() {
+                if let Ok(token) = String::from_utf8(output.stdout) {
+                    let token = token.trim();
+                    return Some(octocrab::auth::Auth::PersonalToken(token.into()));
+                }
+            }
+        }
+
+        None
+    }
+
+    fn octocrab() -> std::result::Result<octocrab::Octocrab, GithubParseError> {
+        let mut builder = octocrab::OctocrabBuilder::new();
+        if let Some(auth) = Self::authentication() {
+            builder = match auth {
+                octocrab::auth::Auth::PersonalToken(token) => builder.personal_token(token),
+                octocrab::auth::Auth::App(app) => builder.app(app.app_id, app.key),
+                _ => builder,
+            };
+        }
+
+        let instance = builder.build()?;
+        Ok(instance)
+    }
+
+    async fn parse_impl(
+        octocrab: Arc<octocrab::Octocrab>,
+        scope: &str,
+    ) -> std::result::Result<terraform::TerraformManifest, GithubParseError> {
+        let current_page = octocrab
+            .current()
+            .list_repos_for_authenticated_user()
+            .send()
+            .await?;
+        let repositories = octocrab.all_pages(current_page).await?;
+
+        for repository in repositories {
+            info!("Found repository: {}", repository.name);
+        }
+
         todo!()
+    }
+
+    pub async fn parse(scope: impl Into<String>) -> Result<terraform::TerraformManifest> {
+        let octocrab = Self::octocrab()?;
+        let scope = scope.into();
+
+        let result = Self::parse_impl(Arc::new(octocrab), &scope).await?;
+
+        Ok(result)
     }
 }
