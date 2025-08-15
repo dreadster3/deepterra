@@ -52,7 +52,7 @@ impl Parser {
 
     pub async fn parse(&self, path: impl Into<String>) -> Result<terraform::TerraformManifest> {
         let path: String = path.into();
-        if path.starts_with("github:") {
+        if let Some(path) = path.strip_prefix("github:") {
             return github::GithubParser::parse(path).await;
         }
 

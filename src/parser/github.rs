@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use log::info;
+use tokio::task::JoinSet;
 
 use crate::parser::{ParseError, Result};
 use crate::terraform;
@@ -9,6 +10,9 @@ use crate::terraform;
 pub enum GithubParseError {
     #[error("octocrab error: {0}")]
     OctocrabError(#[from] octocrab::Error),
+
+    #[error("Could not find a commit for the repository")]
+    NoCommitFound,
 
     #[error("Missing authentication")]
     MissingAuthentication,
@@ -61,7 +65,14 @@ impl GithubParser {
             };
         }
 
-        let instance = builder.build()?;
+        let mut instance = builder.build()?;
+        if let Ok(installation_id) = std::env::var("GITHUB_APP_INSTALLATION_ID") {
+            if let Ok(installation_id) = installation_id.parse::<u64>() {
+                instance = instance
+                    .installation(octocrab::models::InstallationId::from(installation_id))?;
+            }
+        }
+
         Ok(instance)
     }
 
@@ -69,17 +80,40 @@ impl GithubParser {
         octocrab: Arc<octocrab::Octocrab>,
         scope: &str,
     ) -> std::result::Result<terraform::TerraformManifest, GithubParseError> {
-        let current_page = octocrab
-            .current()
-            .list_repos_for_authenticated_user()
-            .send()
-            .await?;
+        let owner_str = scope;
+
+        let current_page = match octocrab.users(owner_str).repos().send().await {
+            Ok(page) => page,
+            Err(_) => octocrab.orgs(owner_str).list_repos().send().await?,
+        };
+
         let repositories = octocrab.all_pages(current_page).await?;
+        let mut joinset = JoinSet::new();
 
         for repository in repositories {
-            info!("Found repository: {}", repository.name);
+            let octocrab = octocrab.clone();
+            joinset.spawn(async move {
+                let commits = octocrab
+                    .repos_by_id(repository.id)
+                    .list_commits()
+                    .send()
+                    .await?;
+
+                let latest_commit = match commits.into_iter().last() {
+                    Some(commit) => commit,
+                    None => return Err(GithubParseError::NoCommitFound),
+                };
+
+                info!(
+                    "Found repository {} with commit: {}",
+                    repository.name, latest_commit.commit.message
+                );
+
+                Ok(())
+            });
         }
 
+        joinset.join_all().await;
         todo!()
     }
 
