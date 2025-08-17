@@ -88,26 +88,20 @@ impl GithubParser {
         };
 
         let repositories = octocrab.all_pages(current_page).await?;
-        let mut joinset = JoinSet::new();
+        let mut joinset: JoinSet<std::result::Result<(), GithubParseError>> = JoinSet::new();
 
         for repository in repositories {
             let octocrab = octocrab.clone();
             joinset.spawn(async move {
                 let commits = octocrab
                     .repos_by_id(repository.id)
-                    .list_commits()
+                    .get_content()
                     .send()
                     .await?;
 
-                let latest_commit = match commits.into_iter().last() {
-                    Some(commit) => commit,
-                    None => return Err(GithubParseError::NoCommitFound),
-                };
-
-                info!(
-                    "Found repository {} with commit: {}",
-                    repository.name, latest_commit.commit.message
-                );
+                for item in commits.items {
+                    info!("item: {:?}", item);
+                }
 
                 Ok(())
             });
