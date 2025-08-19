@@ -103,8 +103,6 @@ impl From<Manifest> for GraphData {
             })
         }
 
-        info!("modules: {modules:?}");
-
         GraphData {
             nodes: resources
                 .into_values()
