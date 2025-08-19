@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use glob::Pattern;
-use std::{process::ExitCode, sync::Arc};
+use std::{path::PathBuf, process::ExitCode, sync::Arc};
 
 use charming::{
     Chart, HtmlRenderer,
@@ -12,7 +12,7 @@ use charming::{
 use env_logger::Env;
 use log::{debug, error, info};
 
-use crate::discovery::Discoverer;
+use crate::discovery::{Discoverer, File};
 
 mod cli;
 mod discovery;
@@ -24,11 +24,28 @@ async fn _main() -> Result<()> {
 
     env_logger::Builder::from_env(Env::default().default_filter_or(args.log_level())).init();
 
-    let options = discovery::DiscoveryOptions::new(args.ignore);
-    let discoverer = discovery::local::LocalDiscoverer::new(args.path, Arc::new(options));
+    let discoverer = discovery::local::LocalDiscoverer::new(args.path);
+
     let files = discoverer.discover().await?;
 
-    info!("Discovered files {files:?}");
+    let glob_pattern = args
+        .ignore
+        .as_ref()
+        .map(|ignore| glob::Pattern::new(ignore))
+        .transpose()?;
+
+    let files_filtered: Vec<_> = files
+        .into_iter()
+        .filter(|file| {
+            glob_pattern
+                .as_ref()
+                .is_none_or(|pattern| !pattern.matches_path(file.path()))
+        })
+        .collect();
+
+    debug!("Discovered files: {:?}", files_filtered);
+
+    let manifest = parser::Parser::parse(files_filtered.into_iter()).await?;
 
     Ok(())
 

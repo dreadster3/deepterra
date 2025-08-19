@@ -1,8 +1,13 @@
-use std::path::PathBuf;
+use std::{fmt::Debug, path::PathBuf};
 
 use crate::discovery::local::LocalDiscoveryError;
 
 pub mod local;
+
+pub trait File: Debug {
+    fn path(&self) -> &PathBuf;
+    fn get_contents(&self) -> Result<String, std::io::Error>;
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum DiscoveryError {
@@ -22,5 +27,5 @@ impl DiscoveryOptions {
 }
 
 pub trait Discoverer {
-    async fn discover(self) -> Result<Vec<PathBuf>, DiscoveryError>;
+    async fn discover(self) -> Result<Vec<impl File>, DiscoveryError>;
 }

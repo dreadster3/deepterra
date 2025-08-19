@@ -8,7 +8,7 @@ use glob::Pattern;
 use log::{debug, info};
 use tokio::task::JoinSet;
 
-use crate::discovery::{Discoverer, DiscoveryError, DiscoveryOptions};
+use crate::discovery::{Discoverer, DiscoveryError, DiscoveryOptions, File};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LocalDiscoveryError {
@@ -24,18 +24,39 @@ pub enum LocalDiscoveryError {
 
 pub struct LocalDiscoverer {
     source: PathBuf,
-    options: Arc<DiscoveryOptions>,
+}
+
+#[derive(Debug)]
+struct LocalFile {
+    path: PathBuf,
+}
+
+impl LocalFile {
+    fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl File for LocalFile {
+    fn path(&self) -> &PathBuf {
+        &self.path
+    }
+
+    fn get_contents(&self) -> std::result::Result<String, std::io::Error> {
+        std::fs::read_to_string(&self.path)
+    }
 }
 
 impl LocalDiscoverer {
-    pub fn new(source: impl AsRef<Path>, options: Arc<DiscoveryOptions>) -> Self {
+    pub fn new(source: impl AsRef<Path>) -> Self {
         Self {
             source: source.as_ref().to_path_buf(),
-            options,
         }
     }
 
-    fn discover_impl(self) -> BoxFuture<'static, Result<Vec<PathBuf>, LocalDiscoveryError>> {
+    fn discover_impl(
+        self,
+    ) -> BoxFuture<'static, Result<Vec<impl File + Send>, LocalDiscoveryError>> {
         Box::pin(async move {
             let path = self.source.clone();
             info!("Discovering local files in {path:?}");
@@ -44,22 +65,8 @@ impl LocalDiscoverer {
                 return Err(LocalDiscoveryError::PathError(path));
             }
 
-            let glob_pattern = self
-                .options
-                .ignore
-                .as_ref()
-                .map(|ignore| Pattern::new(ignore))
-                .transpose()?;
-
-            if let Some(pattern) = glob_pattern.as_ref()
-                && pattern.matches_path(path.as_path())
-            {
-                debug!("Skipping file: {path:?}");
-                return Ok(Vec::new());
-            }
-
             if path.is_file() {
-                return Ok(vec![path]);
+                return Ok(vec![LocalFile::new(path)]);
             }
 
             let mut files = Vec::new();
@@ -76,9 +83,8 @@ impl LocalDiscoverer {
                 };
 
                 if path.is_dir() {
-                    let options = self.options.clone();
                     directory_tasks.spawn(async move {
-                        let discoverer = LocalDiscoverer::new(path, options);
+                        let discoverer = LocalDiscoverer::new(path);
                         discoverer.discover_impl().await
                     });
 
@@ -90,14 +96,7 @@ impl LocalDiscoverer {
                     continue;
                 }
 
-                if let Some(pattern) = glob_pattern.as_ref()
-                    && pattern.matches_path(path.as_path())
-                {
-                    debug!("Skipping file: {path:?}");
-                    continue;
-                }
-
-                files.push(path);
+                files.push(LocalFile::new(path));
             }
 
             let directories = directory_tasks.join_all().await;
@@ -112,7 +111,7 @@ impl LocalDiscoverer {
 }
 
 impl Discoverer for LocalDiscoverer {
-    async fn discover(self) -> Result<Vec<PathBuf>, DiscoveryError> {
+    async fn discover(self) -> Result<Vec<impl File>, DiscoveryError> {
         let result = self.discover_impl().await?;
         Ok(result)
     }
