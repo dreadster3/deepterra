@@ -276,12 +276,11 @@ impl Parser {
             let path = file.path().canonicalize()?;
             let path = path.strip_prefix(&current_dir)?;
 
-            debug!("Parsing file: {:?}", path);
+            debug!("Indexing file: {:?}", path);
 
             let path_parts = path.iter().skip_while(|part| part == &".").take(
                 path.iter().count() - path.iter().take_while(|part| part == &".").count() - 1,
             );
-            debug!("Path parts: {:?}", path_parts.clone().collect::<Vec<_>>());
 
             let mut current_node_id = root;
 
@@ -312,6 +311,7 @@ impl Parser {
     }
 
     async fn parse_file(file: impl File, terraform: &mut Terraform) -> Result<()> {
+        info!("Parsing file: {:?}", file.path());
         let contents = file.get_contents()?;
 
         let hcl: Body = hcl::from_str(contents.as_str())?;
