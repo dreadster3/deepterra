@@ -269,7 +269,7 @@ impl Parser {
      *   └── module2
      *       └── main.tf
      */
-    pub async fn parse(files: impl Iterator<Item = impl File + Send>) -> Result<Manifest> {
+    pub async fn parse(files: impl Iterator<Item = impl File>) -> Result<Manifest> {
         let mut arena = Arena::new();
         info!("Parsing files");
 

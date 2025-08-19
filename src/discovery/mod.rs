@@ -2,9 +2,9 @@ use std::{fmt::Debug, path::PathBuf};
 
 use crate::discovery::local::LocalDiscoveryError;
 
-pub mod local;
+mod local;
 
-pub trait File: Debug {
+pub trait File: Debug + Send {
     fn path(&self) -> &PathBuf;
     fn get_contents(&self) -> Result<String, std::io::Error>;
 }
@@ -28,4 +28,10 @@ impl DiscoveryOptions {
 
 pub trait Discoverer {
     async fn discover(self) -> Result<Vec<impl File>, DiscoveryError>;
+}
+
+pub fn get_discoverer<S: AsRef<str>>(source: S) -> impl Discoverer {
+    let source = source.as_ref();
+
+    local::LocalDiscoverer::new(source)
 }

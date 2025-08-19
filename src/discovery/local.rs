@@ -50,9 +50,7 @@ impl LocalDiscoverer {
         }
     }
 
-    fn discover_impl(
-        self,
-    ) -> BoxFuture<'static, Result<Vec<impl File + Send>, LocalDiscoveryError>> {
+    fn discover_impl(self) -> BoxFuture<'static, Result<Vec<impl File>, LocalDiscoveryError>> {
         Box::pin(async move {
             let path = self.source.clone();
             info!("Discovering local files in {path:?}");

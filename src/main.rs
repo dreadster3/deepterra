@@ -23,7 +23,7 @@ async fn _main() -> Result<()> {
 
     env_logger::Builder::from_env(Env::default().default_filter_or(args.log_level())).init();
 
-    let discoverer = discovery::local::LocalDiscoverer::new(args.path);
+    let discoverer = discovery::get_discoverer(args.path);
 
     let files = discoverer.discover().await?;
 
