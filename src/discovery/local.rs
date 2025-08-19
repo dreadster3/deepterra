@@ -1,14 +1,10 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::path::{Path, PathBuf};
 
 use futures::future::BoxFuture;
-use glob::Pattern;
 use log::{debug, info};
 use tokio::task::JoinSet;
 
-use crate::discovery::{Discoverer, DiscoveryError, DiscoveryOptions, File};
+use crate::discovery::{Discoverer, DiscoveryError, File};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LocalDiscoveryError {

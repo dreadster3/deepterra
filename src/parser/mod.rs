@@ -1,12 +1,12 @@
 use std::{
-    fmt::Debug,
-    path::{Path, PathBuf},
+    env::current_dir,
+    fmt::{Debug, Display},
+    path::Path,
 };
 
 use hcl::Body;
-use indextree::Arena;
+use indextree::{Arena, NodeId};
 use log::{debug, info};
-use tokio::task::JoinSet;
 
 use crate::discovery::File;
 
@@ -221,9 +221,33 @@ pub enum ParseError {
 
     #[error("Failed parsing HCL: {0}")]
     HCLError(#[from] hcl::Error),
+
+    #[error("Failed canonicalizing path: {0}")]
+    CanonicalizationError(#[from] std::path::StripPrefixError),
+
+    #[error("Failed to find node: {0}")]
+    NodeNotFoundError(NodeId),
 }
 
 type Result<T> = std::result::Result<T, ParseError>;
+
+#[derive(Debug)]
+pub struct Manifest {
+    root: NodeId,
+    arena: Arena<Terraform>,
+}
+
+impl Manifest {
+    pub fn new(root: NodeId, arena: Arena<Terraform>) -> Self {
+        Self { root, arena }
+    }
+}
+
+impl Display for Manifest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.root.debug_pretty_print(&self.arena))
+    }
+}
 
 pub struct Parser {}
 
@@ -241,21 +265,22 @@ impl Parser {
      *   └── module2
      *       └── main.tf
      */
-    pub async fn parse(files: impl Iterator<Item = impl File + Send>) -> Result<Arena<Terraform>> {
+    pub async fn parse(files: impl Iterator<Item = impl File + Send>) -> Result<Manifest> {
         let mut arena = Arena::new();
         info!("Parsing files");
 
         let root = arena.new_node(Terraform::new("root"));
 
         for file in files {
-            let path = file.path();
+            let current_dir = current_dir()?;
+            let path = file.path().canonicalize()?;
+            let path = path.strip_prefix(&current_dir)?;
 
             debug!("Parsing file: {:?}", path);
 
-            let path_parts = path
-                .iter()
-                .skip_while(|part| part == &".")
-                .take(path.iter().count() - 2);
+            let path_parts = path.iter().skip_while(|part| part == &".").take(
+                path.iter().count() - path.iter().take_while(|part| part == &".").count() - 1,
+            );
             debug!("Path parts: {:?}", path_parts.clone().collect::<Vec<_>>());
 
             let mut current_node_id = root;
@@ -278,13 +303,12 @@ impl Parser {
             let terraform = arena
                 .get_mut(current_node_id)
                 .map(|node| node.get_mut())
-                .unwrap();
+                .ok_or(ParseError::NodeNotFoundError(current_node_id))?;
 
             Parser::parse_file(file, terraform).await?;
         }
 
-        debug!("Arena:\n{:?}", root.debug_pretty_print(&arena));
-        Ok(arena)
+        Ok(Manifest::new(root, arena))
     }
 
     async fn parse_file(file: impl File, terraform: &mut Terraform) -> Result<()> {

@@ -1,14 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
-use glob::Pattern;
-use std::{path::PathBuf, process::ExitCode, sync::Arc};
+use std::process::ExitCode;
 
-use charming::{
-    Chart, HtmlRenderer,
-    component::{Legend, Title},
-    element::{LineStyle, Tooltip},
-    series::{Graph, GraphLayout},
-};
 use env_logger::Env;
 use log::{debug, error, info};
 
@@ -17,7 +10,6 @@ use crate::discovery::{Discoverer, File};
 mod cli;
 mod discovery;
 mod parser;
-mod terraform;
 
 async fn _main() -> Result<()> {
     let args = cli::Args::parse();
@@ -46,6 +38,7 @@ async fn _main() -> Result<()> {
     debug!("Discovered files: {:?}", files_filtered);
 
     let manifest = parser::Parser::parse(files_filtered.into_iter()).await?;
+    info!("Manifest:\n{}", manifest);
 
     Ok(())
 
