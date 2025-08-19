@@ -120,13 +120,15 @@ impl GitModuleRef {
 
     fn name(&self) -> String {
         let source = self.source();
-        url::Url::parse(source.strip_prefix("git::").unwrap_or(source))
+        let name = url::Url::parse(source.strip_prefix("git::").unwrap_or(source))
             .ok()
             .as_ref()
             .and_then(|url| url.path_segments())
             .and_then(|mut segments| segments.next_back())
             .unwrap_or_default()
-            .to_string()
+            .to_string();
+
+        name.strip_suffix(".git").unwrap_or(&name).to_string()
     }
 
     fn source(&self) -> &str {
