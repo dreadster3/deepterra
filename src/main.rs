@@ -20,18 +20,18 @@ async fn _main() -> Result<()> {
 
     let files = discoverer.discover().await?;
 
-    let glob_pattern = args
+    let glob_patterns = args
         .ignore
-        .as_ref()
-        .map(|ignore| glob::Pattern::new(ignore))
-        .transpose()?;
+        .iter()
+        .map(|ignore| glob::Pattern::new(ignore.as_str()))
+        .filter_map(|pattern| pattern.ok());
 
     let files_filtered: Vec<_> = files
         .into_iter()
         .filter(|file| {
-            glob_pattern
-                .as_ref()
-                .is_none_or(|pattern| !pattern.matches_path(file.path()))
+            glob_patterns
+                .clone()
+                .all(|pattern| !pattern.matches(&file.path().to_string_lossy()))
         })
         .collect();
 

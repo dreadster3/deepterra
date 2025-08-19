@@ -9,7 +9,7 @@ pub struct Args {
 
     /// Ignore files matching this glob pattern
     #[arg(short, long)]
-    pub ignore: Option<String>,
+    pub ignore: Vec<String>,
 
     /// Enable verbose logging (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count)]
