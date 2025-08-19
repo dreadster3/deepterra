@@ -1,4 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use charming::{
+    Chart, HtmlRenderer,
+    component::{Legend, Title},
+    element::{LineStyle, Tooltip},
+    series::{Graph, GraphData, GraphLayout},
+};
 use clap::Parser;
 use std::process::ExitCode;
 
@@ -10,6 +16,7 @@ use crate::discovery::{Discoverer, File};
 mod cli;
 mod discovery;
 mod parser;
+mod visualize;
 
 async fn _main() -> Result<()> {
     let args = cli::Args::parse();
@@ -38,43 +45,37 @@ async fn _main() -> Result<()> {
     debug!("Discovered files: {:?}", files_filtered);
 
     let manifest = parser::Parser::parse(files_filtered.into_iter()).await?;
-    info!("Manifest:\n{}", manifest);
+    debug!("Manifest:\n{}", manifest);
+
+    let graph_data: GraphData = manifest.into();
+
+    let legend = graph_data
+        .categories
+        .iter()
+        .map(|category| category.name.as_ref())
+        .collect();
+
+    let chart = Chart::new()
+        .title(Title::new().text("DeepTerra"))
+        .legend(Legend::new().data(legend))
+        .tooltip(Tooltip::new())
+        .series(
+            Graph::new()
+                .layout(GraphLayout::Circular)
+                .roam(true)
+                .data(graph_data)
+                .line_style(LineStyle::new().color("source").curveness(0.3)),
+        );
+
+    let mut renderer = HtmlRenderer::new("DeepTerra", 1000, 1000);
+    renderer
+        .save(&chart, &args.output)
+        .with_context(|| format!("Failed to save to {}", args.output))?;
+    info!("Saved to {}", args.output);
+
+    println!("Saved to {}", args.output);
 
     Ok(())
-
-    // let terraform = parser
-    //     .parse(args.path.as_str())
-    //     .await
-    //     .context("Failed to parse terraform manifest")?;
-    // debug!("{terraform:?}");
-    //
-    // let graph_data = terraform.to_graph();
-    // debug!("{graph_data:?}");
-    //
-    // let legend = graph_data
-    //     .categories
-    //     .iter()
-    //     .map(|category| category.name.as_ref())
-    //     .collect();
-    // let chart = Chart::new()
-    //     .title(Title::new().text("DeepTerra"))
-    //     .legend(Legend::new().data(legend))
-    //     .tooltip(Tooltip::new())
-    //     .series(
-    //         Graph::new()
-    //             .layout(GraphLayout::Circular)
-    //             .roam(true)
-    //             .data(graph_data)
-    //             .line_style(LineStyle::new().color("source").curveness(0.3)),
-    //     );
-    //
-    // let mut renderer = HtmlRenderer::new("DeepTerra", 1000, 1000);
-    // renderer
-    //     .save(&chart, &args.output)
-    //     .with_context(|| format!("Failed to save to {}", args.output))?;
-    // println!("Saved to {}", args.output);
-    //
-    // Ok(())
 }
 
 #[tokio::main]

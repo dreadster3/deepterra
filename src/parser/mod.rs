@@ -5,7 +5,7 @@ use std::{
 };
 
 use hcl::Body;
-use indextree::{Arena, NodeId};
+use indextree::{Arena, Node, NodeId};
 use log::{debug, info};
 
 use crate::discovery::File;
@@ -17,8 +17,8 @@ const MODULE_SOURCE_KEY: &str = "source";
 #[derive(Debug)]
 pub struct Terraform {
     pub name: String,
-    resources: Vec<Resource>,
-    modules: Vec<ModuleRef>,
+    pub resources: Vec<Resource>,
+    pub modules: Vec<ModuleRef>,
 }
 
 impl Terraform {
@@ -240,6 +240,10 @@ pub struct Manifest {
 impl Manifest {
     pub fn new(root: NodeId, arena: Arena<Terraform>) -> Self {
         Self { root, arena }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Node<Terraform>> {
+        self.arena.iter()
     }
 }
 
