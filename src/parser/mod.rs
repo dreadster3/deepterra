@@ -218,8 +218,11 @@ impl From<&hcl::Block> for ModuleRef {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
-    #[error("Failed reading file: {0}")]
+    #[error("IO error: {0}")]
     IOError(#[from] std::io::Error),
+
+    #[error("Failed reading file: {0}")]
+    FileError(#[from] anyhow::Error),
 
     #[error("Failed parsing HCL: {0}")]
     HCLError(#[from] hcl::Error),
@@ -318,7 +321,7 @@ impl Parser {
 
     async fn parse_file(file: impl File, terraform: &mut Terraform) -> Result<()> {
         info!("Parsing file: {:?}", file.path());
-        let contents = file.get_contents()?;
+        let contents = file.get_contents().await?;
 
         let hcl: Body = hcl::from_str(contents.as_str())?;
         let parsed_terraform: Terraform = hcl.into();

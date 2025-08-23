@@ -2,17 +2,21 @@ use std::{fmt::Debug, path::PathBuf};
 
 use crate::discovery::local::LocalDiscoveryError;
 
+mod github;
 mod local;
 
 pub trait File: Debug + Send {
     fn path(&self) -> &PathBuf;
-    fn get_contents(&self) -> Result<String, std::io::Error>;
+    async fn get_contents(&self) -> anyhow::Result<String>;
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum DiscoveryError {
     #[error("Local discovery error: {0}")]
     LocalDiscoveryError(#[from] LocalDiscoveryError),
+
+    #[error("Github discovery error: {0}")]
+    GithubDiscoveryError(#[from] github::GithubDiscoveryError),
 }
 
 #[derive(Debug)]
