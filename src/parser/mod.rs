@@ -1,12 +1,12 @@
 use std::{
     env::current_dir,
     fmt::{Debug, Display},
-    path::Path,
+    path::{Component, Path, PathBuf},
 };
 
 use hcl::Body;
 use indextree::{Arena, Node, NodeId};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 
 use crate::discovery::File;
 
@@ -261,6 +261,26 @@ impl Display for Manifest {
 pub struct Parser {}
 
 impl Parser {
+    fn normalize_path(path: &Path) -> PathBuf {
+        let mut components = Vec::new();
+
+        for component in path.components() {
+            match component {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    if !components.is_empty() && components.last() != Some(&Component::ParentDir) {
+                        components.pop();
+                    } else if path.is_relative() {
+                        components.push(component);
+                    }
+                }
+                _ => components.push(component),
+            }
+        }
+
+        components.into_iter().collect()
+    }
+
     /*
      * ./aggregator/module4/main.tf
      * ./aggregator/module1/main.tf
@@ -284,9 +304,8 @@ impl Parser {
         let root = arena.new_node(Terraform::new("root"));
 
         for file in files {
-            let current_dir = current_dir()?;
-            let path = file.path().canonicalize()?;
-            let path = path.strip_prefix(&current_dir)?;
+            let path = file.path();
+            let path = Self::normalize_path(&path);
 
             debug!("Indexing file: {:?}", path);
 
@@ -316,7 +335,9 @@ impl Parser {
                 .map(|node| node.get_mut())
                 .ok_or(ParseError::NodeNotFoundError(current_node_id))?;
 
-            Parser::parse_file(file, terraform).await?;
+            let _ = Parser::parse_file(file, terraform)
+                .await
+                .inspect_err(|e| warn!("Failed to parse file: {e}"));
         }
 
         Ok(Manifest::new(root, arena))
