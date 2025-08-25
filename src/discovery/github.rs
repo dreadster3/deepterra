@@ -146,11 +146,13 @@ impl GithubDiscoverer {
     }
 
     async fn discover_impl(&self) -> Result<Vec<GithubFile>, GithubDiscoveryError> {
-        let owner = &self.owner;
-        let repositories_page = match self.octocrab.users(owner).repos().send().await {
-            Ok(response) => response,
-            Err(_) => self.octocrab.orgs(owner).list_repos().send().await?,
-        };
+        let repositories_page = self
+            .octocrab
+            .current()
+            .list_repos_for_authenticated_user()
+            .visibility("all")
+            .send()
+            .await?;
 
         let repositories = self.octocrab.all_pages(repositories_page).await?;
         let mut joinset = JoinSet::new();
