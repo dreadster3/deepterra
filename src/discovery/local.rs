@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use async_trait::async_trait;
 use futures::future::BoxFuture;
 use log::{debug, info};
 use tokio::task::JoinSet;
@@ -33,14 +34,19 @@ impl LocalFile {
     }
 }
 
+#[async_trait]
 impl File for LocalFile {
-    fn path(&self) -> &PathBuf {
-        &self.path
+    fn path(&self) -> PathBuf {
+        self.path.clone()
     }
 
     async fn get_contents(&self) -> anyhow::Result<String> {
         let result = std::fs::read_to_string(&self.path)?;
         Ok(result)
+    }
+
+    fn boxed(self) -> Box<dyn File> {
+        Box::new(self)
     }
 }
 
@@ -51,7 +57,7 @@ impl LocalDiscoverer {
         }
     }
 
-    fn discover_impl(self) -> BoxFuture<'static, Result<Vec<LocalFile>, LocalDiscoveryError>> {
+    fn discover_impl<'a>(&'a self) -> BoxFuture<'a, Result<Vec<LocalFile>, LocalDiscoveryError>> {
         Box::pin(async move {
             let path = self.source.clone();
             info!("Discovering local files in {path:?}");
@@ -105,9 +111,12 @@ impl LocalDiscoverer {
     }
 }
 
+#[async_trait]
 impl Discoverer for LocalDiscoverer {
-    async fn discover(self) -> Result<Vec<impl File>, DiscoveryError> {
+    async fn discover(&self) -> Result<Vec<Box<dyn File>>, DiscoveryError> {
         let result = self.discover_impl().await?;
+        let result = result.into_iter().map(|file| file.boxed()).collect();
+
         Ok(result)
     }
 }

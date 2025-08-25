@@ -6,7 +6,7 @@ use std::{
 
 use hcl::Body;
 use indextree::{Arena, Node, NodeId};
-use log::{debug, info};
+use log::{debug, error, info};
 
 use crate::discovery::File;
 
@@ -274,7 +274,10 @@ impl Parser {
      *   └── module2
      *       └── main.tf
      */
-    pub async fn parse(files: impl Iterator<Item = impl File>) -> Result<Manifest> {
+    pub async fn parse<'a, I>(files: I) -> Result<Manifest>
+    where
+        I: IntoIterator<Item = &'a dyn File>,
+    {
         let mut arena = Arena::new();
         info!("Parsing files");
 
@@ -319,7 +322,7 @@ impl Parser {
         Ok(Manifest::new(root, arena))
     }
 
-    async fn parse_file(file: impl File, terraform: &mut Terraform) -> Result<()> {
+    async fn parse_file(file: &dyn File, terraform: &mut Terraform) -> Result<()> {
         info!("Parsing file: {:?}", file.path());
         let contents = file.get_contents().await?;
 

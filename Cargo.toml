@@ -10,6 +10,7 @@ repository = "https://github.com/dreadster3/deepterra"
 
 [dependencies]
 anyhow = "1.0.98"
+async-trait = "0.1.89"
 charming = "0.6.0"
 clap = { version = "4.5.43", features = ["derive"] }
 env_logger = "0.11.8"

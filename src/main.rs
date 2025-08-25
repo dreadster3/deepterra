@@ -23,7 +23,7 @@ async fn _main() -> Result<()> {
 
     env_logger::Builder::from_env(Env::default().default_filter_or(args.log_level())).init();
 
-    let discoverer = discovery::get_discoverer(args.path);
+    let discoverer = discovery::get_discoverer(args.path)?;
 
     let files = discoverer.discover().await?;
 
@@ -34,17 +34,18 @@ async fn _main() -> Result<()> {
         .filter_map(|pattern| pattern.ok());
 
     let files_filtered: Vec<_> = files
-        .into_iter()
+        .iter()
         .filter(|file| {
             glob_patterns
                 .clone()
                 .all(|pattern| !pattern.matches(&file.path().to_string_lossy()))
         })
+        .map(|file| file.as_ref())
         .collect();
 
     debug!("Discovered files: {:?}", files_filtered);
 
-    let manifest = parser::Parser::parse(files_filtered.into_iter()).await?;
+    let manifest = parser::Parser::parse(files_filtered).await?;
     debug!("Manifest:\n{}", manifest);
 
     let graph_data: GraphData = manifest.into();
